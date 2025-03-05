@@ -204,11 +204,20 @@ class ActorRolloutRefWorker(Worker):
             else:
                 actor_module_class = AutoModelForCausalLM
 
-            actor_module = actor_module_class.from_pretrained(pretrained_model_name_or_path=local_path,
-                                                              torch_dtype=torch_dtype,
-                                                              config=actor_model_config,
-                                                              attn_implementation='flash_attention_2',
-                                                              trust_remote_code=trust_remote_code)
+            if True:
+                state_dict = torch.load("/home/aiscuser/checkpoint-222-hf")
+                actor_module = actor_module_class.from_pretrained(pretrained_model_name_or_path=local_path,
+                                                                torch_dtype=torch_dtype,
+                                                                config=actor_model_config,
+                                                                attn_implementation='flash_attention_2',
+                                                                trust_remote_code=trust_remote_code,
+                                                                state_dict=state_dict)
+            else:
+                actor_module = actor_module_class.from_pretrained(pretrained_model_name_or_path=local_path,
+                                                                torch_dtype=torch_dtype,
+                                                                config=actor_model_config,
+                                                                attn_implementation='flash_attention_2',
+                                                                trust_remote_code=trust_remote_code)
             # Apply Liger kernel to the model if use_liger is set to True
             if use_liger:
                 from liger_kernel.transformers.monkey_patch import _apply_liger_kernel_to_instance
@@ -685,11 +694,20 @@ class CriticWorker(Worker):
             warnings.simplefilter("ignore")
             setattr(critic_model_config, 'classifier_dropout', 0.)
             setattr(critic_model_config, 'hidden_dropout', '0')
-            critic_module = AutoModelForTokenClassification.from_pretrained(pretrained_model_name_or_path=local_path,
-                                                                            torch_dtype=torch_dtype,
-                                                                            config=critic_model_config,
-                                                                            attn_implementation='flash_attention_2',
-                                                                            trust_remote_code=trust_remote_code)
+            if True:
+                state_dict = torch.load("/home/aiscuser/checkpoint-222-hf")
+                critic_module = AutoModelForTokenClassification.from_pretrained(pretrained_model_name_or_path=local_path,
+                                                                                torch_dtype=torch_dtype,
+                                                                                config=critic_model_config,
+                                                                                attn_implementation='flash_attention_2',
+                                                                                trust_remote_code=trust_remote_code,
+                                                                                state_dict=state_dict)
+            else:
+                critic_module = AutoModelForTokenClassification.from_pretrained(pretrained_model_name_or_path=local_path,
+                                                                                torch_dtype=torch_dtype,
+                                                                                config=critic_model_config,
+                                                                                attn_implementation='flash_attention_2',
+                                                                                trust_remote_code=trust_remote_code)
 
             # some parameters may not in torch_dtype
             critic_module.to(torch_dtype)
