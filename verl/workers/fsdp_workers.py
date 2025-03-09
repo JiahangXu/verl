@@ -204,8 +204,8 @@ class ActorRolloutRefWorker(Worker):
             else:
                 actor_module_class = AutoModelForCausalLM
 
-            if True:
-                state_dict = torch.load("/home/aiscuser/checkpoint-222-hf")
+            if self.config.model.get('state_dict', None):
+                state_dict = torch.load(self.config.model.state_dict)
                 actor_module = actor_module_class.from_pretrained(pretrained_model_name_or_path=local_path,
                                                                 torch_dtype=torch_dtype,
                                                                 config=actor_model_config,
@@ -701,8 +701,8 @@ class CriticWorker(Worker):
             warnings.simplefilter("ignore")
             setattr(critic_model_config, 'classifier_dropout', 0.)
             setattr(critic_model_config, 'hidden_dropout', '0')
-            if True:
-                state_dict = torch.load("/home/aiscuser/checkpoint-222-hf")
+            if self.config.model.get('state_dict', None):
+                state_dict = torch.load(self.config.model.state_dict)
                 critic_module = AutoModelForTokenClassification.from_pretrained(pretrained_model_name_or_path=local_path,
                                                                                 torch_dtype=torch_dtype,
                                                                                 config=critic_model_config,

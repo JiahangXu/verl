@@ -16,6 +16,7 @@ actor_rollout_ref:
   hybrid_engine: True
   model:
     path: ~/models/deepseek-llm-7b-chat
+    state_dict: null
     external_lib: null
     override_config: { }
     enable_gradient_checkpointing: True
@@ -101,6 +102,7 @@ critic:
   model:
     path: ~/models/deepseek-llm-7b-chat
     tokenizer_path: ${actor_rollout_ref.model.path}
+    state_dict: null
     override_config: { }
     external_lib: ${actor_rollout_ref.model.external_lib}
     enable_gradient_checkpointing: True

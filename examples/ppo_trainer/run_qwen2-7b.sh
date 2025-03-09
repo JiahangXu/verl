@@ -1,10 +1,12 @@
 set -x
 
-gsm8k_train_path=$HOME/data/gsm8k_token_skip/train.parquet
-gsm8k_test_path=$HOME/data/gsm8k_token_skip/test.parquet
+gsm8k_train_path=$HOME/data/compressed_gsm8k/train.parquet
+gsm8k_test_path=$HOME/data/compressed_gsm8k/test.parquet
 
 train_files=$gsm8k_train_path
 test_files=$gsm8k_test_path
+
+state_dict=/home/aiscuser/gsm8k_think_token_08_hf
 
 python3 -m verl.trainer.main_ppo \
     data.train_files="$train_files" \
@@ -13,6 +15,7 @@ python3 -m verl.trainer.main_ppo \
     data.max_prompt_length=1024 \
     data.max_response_length=512 \
     actor_rollout_ref.model.path=/home/aiscuser/Qwen2.5-7B-Instruct \
+    actor_rollout_ref.model.state_dict=$state_dict \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.ppo_mini_batch_size=256 \
@@ -29,6 +32,7 @@ python3 -m verl.trainer.main_ppo \
     critic.optim.lr=1e-5 \
     critic.model.use_remove_padding=True \
     critic.model.path=/home/aiscuser/Qwen2.5-7B-Instruct \
+    critic.model.state_dict=$state_dict \
     critic.model.enable_gradient_checkpointing=True \
     critic.ppo_micro_batch_size_per_gpu=32 \
     critic.model.fsdp_config.param_offload=True \
@@ -37,7 +41,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
     trainer.project_name='thinking_lingua_ppo' \
-    trainer.experiment_name='Qwen2-7B-Instruct_function_rm' \
+    trainer.experiment_name='Qwen2-7B-Instruct_compress_08' \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
     trainer.save_freq=-1 \
