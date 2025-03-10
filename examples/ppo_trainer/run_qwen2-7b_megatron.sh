@@ -1,12 +1,12 @@
 set -x
 
-gsm8k_train_path=$HOME/data/compressed_gsm8k/train.parquet
-gsm8k_test_path=$HOME/data/compressed_gsm8k/test.parquet
+gsm8k_train_path=$HOME/data/gsm8k/train.parquet
+gsm8k_test_path=$HOME/data/gsm8k/test.parquet
+math_train_path=$HOME/data/math/train.parquet
+math_test_path=$HOME/data/math/test.parquet
 
-train_files=$gsm8k_train_path
-test_files=$gsm8k_test_path
-
-state_dict=/home/aiscuser/gsm8k_think_token_08_hf
+train_files="['$gsm8k_train_path', '$math_train_path']"
+test_files="['$gsm8k_test_path', '$math_test_path']"
 
 python3 -m verl.trainer.main_ppo --config-path=config \
     --config-name='ppo_megatron_trainer.yaml'\
@@ -48,6 +48,5 @@ python3 -m verl.trainer.main_ppo --config-path=config \
     trainer.n_gpus_per_node=16 \
     trainer.nnodes=1 \
     trainer.save_freq=-1 \
-    trainer.test_freq=1 \
-    trainer.total_epochs=10 $@
- 
+    trainer.test_freq=10 \
+    trainer.total_epochs=15 $@
