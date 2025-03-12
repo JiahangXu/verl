@@ -2,8 +2,8 @@ set -x
 
 export VLLM_ATTENTION_BACKEND=XFORMERS
 
-gsm8k_train_path=$HOME/data/compressed_gsm8k/train.parquet
-gsm8k_test_path=$HOME/data/compressed_gsm8k/test.parquet
+gsm8k_train_path=$HOME/data/countdown_compressed_hinter/train.parquet
+gsm8k_test_path=$HOME/data/countdown_compressed_hinter/test.parquet
 
 train_files=$gsm8k_train_path
 test_files=$gsm8k_test_path
@@ -16,7 +16,7 @@ python3 -m verl.trainer.main_ppo \
     data.val_files="$test_files" \
     data.train_batch_size=1024 \
     data.max_prompt_length=1024 \
-    data.max_response_length=512 \
+    data.max_response_length=1024 \
     actor_rollout_ref.model.path=/home/aiscuser/$state_dict \
     actor_rollout_ref.actor.optim.lr=$lr \
     actor_rollout_ref.model.use_remove_padding=True \
@@ -42,7 +42,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
     trainer.project_name='thinking_lingua_ppo' \
-    trainer.experiment_name=${state_dict}_${lr}_0311_1 \
+    trainer.experiment_name=tinyzero_${state_dict}_${lr}_0312 \
     +trainer.val_before_train=False \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
