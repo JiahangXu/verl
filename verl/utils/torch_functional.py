@@ -523,3 +523,10 @@ def get_unpad_data(attention_mask):
         cu_seqlens,
         max_seqlen_in_batch,
     )
+
+
+def rstrip(a_list, id_to_strip):
+    p = len(a_list) - 1
+    while p >= 0 and a_list[p] == id_to_strip:
+        p -= 1
+    return a_list[:p + 1]

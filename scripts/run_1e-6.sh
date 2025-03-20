@@ -42,9 +42,9 @@ python3 -m verl.trainer.main_ppo \
     critic.model.fsdp_config.optimizer_offload=True \
     algorithm.kl_ctrl.kl_coef=0.001 \
     trainer.critic_warmup=0 \
-    trainer.logger=['console','wandb'] \
+    trainer.logger=['console'] \
     trainer.project_name='thinking_lingua_ppo' \
-    trainer.experiment_name=test_4321_3 \
+    trainer.experiment_name=test_compression_1 \
     +trainer.val_before_train=False \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \

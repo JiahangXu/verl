@@ -33,7 +33,7 @@ from tensordict import TensorDict
 from torch import nn
 
 from verl import DataProto
-from verl.utils.torch_functional import get_eos_mask, pad_sequence_to_length
+from verl.utils.torch_functional import get_eos_mask, pad_sequence_to_length, rstrip
 from verl.workers.rollout.base import BaseRollout
 from verl.third_party.vllm import LLM, vllm_version
 from verl.third_party.vllm import parallel_state as vllm_ps
@@ -52,6 +52,10 @@ def _pre_process_inputs(pad_token_id, prompt_token_ids: torch.Tensor) -> List[in
     non_pad_index = torch.nonzero(prompt_token_ids != pad_token_id, as_tuple=False)[0][0]
     token_ids = prompt_token_ids[non_pad_index:].tolist()
     return token_ids
+
+def do_compress(seq, tokenizer, total_rollouts):
+    #  return [seq] + [compressed seq] * (total_rollouts - 1)
+    return [seq for _ in range(total_rollouts)]
 
 
 class vLLMRollout(BaseRollout):
@@ -193,49 +197,50 @@ class vLLMRollout(BaseRollout):
                 'temperature': self.config.val_kwargs.temperature,
                 'n': 1,  # if validate, already repeat in ray_trainer
             }
-
         if self.config.enable_compress:
+            kwargs_round1 = {
+                "n": 1,
+                "stop": self.config.compress_stop if self.config.compress_stop else [],
+                "detokenize": True
+            }
+            tokenizer = self.inference_engine.get_tokenizer().tokenizer
+
             # users can customize different sampling_params at different run
-            with self.update_sampling_params(**kwargs):
-                self.sampling_params.stop_token_ids=[151666]
-                self.sampling_params.n=1
-                eos_token_id += [151666]
+            with self.update_sampling_params(**kwargs, **kwargs_round1):
                 output1 = self.inference_engine.generate(
                     prompts=None,  # because we have already convert it to prompt token id
                     sampling_params=self.sampling_params,
-                    prompt_token_ids=idx_list, # TODO:检查是不是变长的
-                    use_tqdm=False) # TODO: output检查是不是变长的
+                    prompt_token_ids=idx_list,
+                    use_tqdm=False)
                 breakpoint()
-                response1 = output1[0].to(idx.device)
+                response1_list = rstrip(output1[0].tolist(), tokenizer.pad_token_id) # 去掉padding
 
                 # compress output (3次)+original 一共rollout 4 次
-                compressed_response1 = [response1] # TODO: 如何batch操作 idx_list
-                total_rollouts = self.sampling_params.n
-                n_compress_var = total_rollouts - 1
-                for i in range(n_compress_var):
-                    temp_response = ...
-                    compressed_response1.append(temp_response) # TODO: 是不是要处理padding，这里不能pad！
+                total_rollouts = self.config.n
+                compressed_response1 = []
+                for item in response1_list:
+                    compressed_response1.extend(do_compress(item, tokenizer, total_rollouts)) # do compress
+                idx_list1 = [x for x in idx_list for _ in range(total_rollouts)]
 
-                # 结束之后加上结束think的token 然后继续生成到结果
-                idx_response1 += idx_list + compressed_response1 + "151666"
+            with self.update_sampling_params(**kwargs):
+                # 然后继续生成到结果
+                idx_response1 = [i + j for i, j in zip(idx_list1, compressed_response1)]
                 output2 = self.inference_engine.generate(
                     prompts=None,  # because we have already convert it to prompt token id
                     sampling_params=self.sampling_params,
                     prompt_token_ids=idx_response1, # TODO: 检查结果
                     use_tqdm=False)
-
-                # tokenizer = self.inference_engine.get_tokenizer().tokenizer
-                
                 
                 # TODO(sgm): disable logprob when recompute_log_prob is enable
                 # if n = 1: (bs, response_length) ; if n > 1: (bs * n, response_length)
-                response2 = output2[0].to(idx.device)
-                # log_probs = output[1].to(idx.device)
-                response = compressed_response1 + response2
+                response2_list = rstrip(output2[0].tolist(), tokenizer.pad_token_id) # 去掉padding
+                response_list = [i + j  if len(i) + len(j) <= self.config.response_length else i + j[:self.config.response_length - len(i)]
+                                 for i, j in zip(response1_list, response2_list)]
+                response = torch.tensor(response_list).unsqueeze(0).to(idx.device)
 
-                if response.shape[1] < self.config.response_length:
-                    response = pad_sequence_to_length(response, self.config.response_length, self.pad_token_id)
-                    # log_probs = pad_sequence_to_length(log_probs, self.config.response_length, self.pad_token_id)
+                # if response.shape[1] < self.config.response_length: # 两次之后一定需要pad
+                response = pad_sequence_to_length(response, self.config.response_length, self.pad_token_id)
+                # log_probs = pad_sequence_to_length(log_probs, self.config.response_length, self.pad_token_id)
 
                 # utilize current sampling params
                 if total_rollouts > 1 and do_sample:
@@ -253,7 +258,6 @@ class vLLMRollout(BaseRollout):
             # prompt: left pad + response: right pad
             # attention_mask: [0,0,0,0,1,1,1,1, | 1,1,1,0,0,0,0,0]
             # position_ids:   [0,0,0,0,0,1,2,3, | 4,5,6,7,8,9,10,11]
-            
             response_position_ids = position_ids[:, -1:] + delta_position_id # torch.Size([256, 1024]) = torch.Size([256, 1]) + torch.Size([256, 1024]) 调整response_position_id 方便放到后面
             position_ids = torch.cat([position_ids, response_position_ids], dim=-1) # 把response_position_ids拼在输入的position_ids的后面 torch.Size([256, 2048])
             response_attention_mask = get_eos_mask(response_id=response, eos_token=eos_token_id, dtype=attention_mask.dtype) # 把所有的eos_token_id的位置变成0
