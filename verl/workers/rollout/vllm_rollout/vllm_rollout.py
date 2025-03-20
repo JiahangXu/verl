@@ -198,36 +198,51 @@ class vLLMRollout(BaseRollout):
             # users can customize different sampling_params at different run
             with self.update_sampling_params(**kwargs):
                 self.sampling_params.stop_token_ids=[151666]
+                self.sampling_params.n=1
                 eos_token_id += [151666]
-                output = self.inference_engine.generate(
+                output1 = self.inference_engine.generate(
                     prompts=None,  # because we have already convert it to prompt token id
                     sampling_params=self.sampling_params,
-                    prompt_token_ids=idx_list,
-                    use_tqdm=False)
+                    prompt_token_ids=idx_list, # TODO:检查是不是变长的
+                    use_tqdm=False) # TODO: output检查是不是变长的
                 breakpoint()
+                response1 = output1[0].to(idx.device)
 
                 # compress output (3次)+original 一共rollout 4 次
-                tokenizer = self.inference_engine.get_tokenizer().tokenizer
+                compressed_response1 = [response1] # TODO: 如何batch操作 idx_list
+                total_rollouts = self.sampling_params.n
+                n_compress_var = total_rollouts - 1
+                for i in range(n_compress_var):
+                    temp_response = ...
+                    compressed_response1.append(temp_response) # TODO: 是不是要处理padding，这里不能pad！
 
                 # 结束之后加上结束think的token 然后继续生成到结果
+                idx_response1 += idx_list + compressed_response1 + "151666"
+                output2 = self.inference_engine.generate(
+                    prompts=None,  # because we have already convert it to prompt token id
+                    sampling_params=self.sampling_params,
+                    prompt_token_ids=idx_response1, # TODO: 检查结果
+                    use_tqdm=False)
 
-
-
+                # tokenizer = self.inference_engine.get_tokenizer().tokenizer
+                
+                
                 # TODO(sgm): disable logprob when recompute_log_prob is enable
                 # if n = 1: (bs, response_length) ; if n > 1: (bs * n, response_length)
-                response = output[0].to(idx.device)
+                response2 = output2[0].to(idx.device)
                 # log_probs = output[1].to(idx.device)
+                response = compressed_response1 + response2
 
                 if response.shape[1] < self.config.response_length:
                     response = pad_sequence_to_length(response, self.config.response_length, self.pad_token_id)
                     # log_probs = pad_sequence_to_length(log_probs, self.config.response_length, self.pad_token_id)
 
                 # utilize current sampling params
-                if self.sampling_params.n > 1 and do_sample:
-                    idx = idx.repeat_interleave(self.sampling_params.n, dim=0)
-                    attention_mask = attention_mask.repeat_interleave(self.sampling_params.n, dim=0)
-                    position_ids = position_ids.repeat_interleave(self.sampling_params.n, dim=0)
-                    batch_size = batch_size * self.sampling_params.n
+                if total_rollouts > 1 and do_sample:
+                    idx = idx.repeat_interleave(total_rollouts, dim=0)
+                    attention_mask = attention_mask.repeat_interleave(total_rollouts, dim=0)
+                    position_ids = position_ids.repeat_interleave(total_rollouts, dim=0)
+                    batch_size = batch_size * total_rollouts
                 seq = torch.cat([idx, response], dim=-1)
 
             response_length = response.size(1)
