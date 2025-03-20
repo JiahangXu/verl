@@ -194,43 +194,96 @@ class vLLMRollout(BaseRollout):
                 'n': 1,  # if validate, already repeat in ray_trainer
             }
 
-        # users can customize different sampling_params at different run
-        with self.update_sampling_params(**kwargs):
-            output = self.inference_engine.generate(
-                prompts=None,  # because we have already convert it to prompt token id
-                sampling_params=self.sampling_params,
-                prompt_token_ids=idx_list,
-                use_tqdm=False)
+        if self.config.enable_compress:
+            # users can customize different sampling_params at different run
+            with self.update_sampling_params(**kwargs):
+                self.sampling_params.stop_token_ids=[151666]
+                eos_token_id += [151666]
+                output = self.inference_engine.generate(
+                    prompts=None,  # because we have already convert it to prompt token id
+                    sampling_params=self.sampling_params,
+                    prompt_token_ids=idx_list,
+                    use_tqdm=False)
+                breakpoint()
 
-            # TODO(sgm): disable logprob when recompute_log_prob is enable
-            # if n = 1: (bs, response_length) ; if n > 1: (bs * n, response_length)
-            response = output[0].to(idx.device)
-            # log_probs = output[1].to(idx.device)
+                # compress output (3次)+original 一共rollout 4 次
+                tokenizer = self.inference_engine.get_tokenizer().tokenizer
 
-            if response.shape[1] < self.config.response_length:
-                response = pad_sequence_to_length(response, self.config.response_length, self.pad_token_id)
-                # log_probs = pad_sequence_to_length(log_probs, self.config.response_length, self.pad_token_id)
+                # 结束之后加上结束think的token 然后继续生成到结果
 
-            # utilize current sampling params
-            if self.sampling_params.n > 1 and do_sample:
-                idx = idx.repeat_interleave(self.sampling_params.n, dim=0)
-                attention_mask = attention_mask.repeat_interleave(self.sampling_params.n, dim=0)
-                position_ids = position_ids.repeat_interleave(self.sampling_params.n, dim=0)
-                batch_size = batch_size * self.sampling_params.n
-            seq = torch.cat([idx, response], dim=-1)
 
-        response_length = response.size(1)
-        delta_position_id = torch.arange(1, response_length + 1, device=position_ids.device)
-        delta_position_id = delta_position_id.unsqueeze(0).repeat(batch_size, 1)
 
-        # TODO(sgm): fix position_ids on right_pad
-        # prompt: left pad + response: right pad
-        # attention_mask: [0,0,0,0,1,1,1,1, | 1,1,1,0,0,0,0,0]
-        # position_ids:   [0,0,0,0,0,1,2,3, | 4,5,6,7,8,9,10,11]
-        response_position_ids = position_ids[:, -1:] + delta_position_id
-        position_ids = torch.cat([position_ids, response_position_ids], dim=-1)
-        response_attention_mask = get_eos_mask(response_id=response, eos_token=eos_token_id, dtype=attention_mask.dtype)
-        attention_mask = torch.cat((attention_mask, response_attention_mask), dim=-1)
+                # TODO(sgm): disable logprob when recompute_log_prob is enable
+                # if n = 1: (bs, response_length) ; if n > 1: (bs * n, response_length)
+                response = output[0].to(idx.device)
+                # log_probs = output[1].to(idx.device)
+
+                if response.shape[1] < self.config.response_length:
+                    response = pad_sequence_to_length(response, self.config.response_length, self.pad_token_id)
+                    # log_probs = pad_sequence_to_length(log_probs, self.config.response_length, self.pad_token_id)
+
+                # utilize current sampling params
+                if self.sampling_params.n > 1 and do_sample:
+                    idx = idx.repeat_interleave(self.sampling_params.n, dim=0)
+                    attention_mask = attention_mask.repeat_interleave(self.sampling_params.n, dim=0)
+                    position_ids = position_ids.repeat_interleave(self.sampling_params.n, dim=0)
+                    batch_size = batch_size * self.sampling_params.n
+                seq = torch.cat([idx, response], dim=-1)
+
+            response_length = response.size(1)
+            delta_position_id = torch.arange(1, response_length + 1, device=position_ids.device)
+            delta_position_id = delta_position_id.unsqueeze(0).repeat(batch_size, 1)
+
+            # TODO(sgm): fix position_ids on right_pad
+            # prompt: left pad + response: right pad
+            # attention_mask: [0,0,0,0,1,1,1,1, | 1,1,1,0,0,0,0,0]
+            # position_ids:   [0,0,0,0,0,1,2,3, | 4,5,6,7,8,9,10,11]
+            
+            response_position_ids = position_ids[:, -1:] + delta_position_id # torch.Size([256, 1024]) = torch.Size([256, 1]) + torch.Size([256, 1024]) 调整response_position_id 方便放到后面
+            position_ids = torch.cat([position_ids, response_position_ids], dim=-1) # 把response_position_ids拼在输入的position_ids的后面 torch.Size([256, 2048])
+            response_attention_mask = get_eos_mask(response_id=response, eos_token=eos_token_id, dtype=attention_mask.dtype) # 把所有的eos_token_id的位置变成0
+            attention_mask = torch.cat((attention_mask, response_attention_mask), dim=-1) # 左右拼起来
+
+        else:
+            # users can customize different sampling_params at different run
+            with self.update_sampling_params(**kwargs):
+                output = self.inference_engine.generate(
+                    prompts=None,  # because we have already convert it to prompt token id
+                    sampling_params=self.sampling_params,
+                    prompt_token_ids=idx_list,
+                    use_tqdm=False)
+
+                # TODO(sgm): disable logprob when recompute_log_prob is enable
+                # if n = 1: (bs, response_length) ; if n > 1: (bs * n, response_length)
+                response = output[0].to(idx.device)
+                # log_probs = output[1].to(idx.device)
+
+                if response.shape[1] < self.config.response_length:
+                    response = pad_sequence_to_length(response, self.config.response_length, self.pad_token_id)
+                    # log_probs = pad_sequence_to_length(log_probs, self.config.response_length, self.pad_token_id)
+
+                # utilize current sampling params
+                if self.sampling_params.n > 1 and do_sample:
+                    idx = idx.repeat_interleave(self.sampling_params.n, dim=0)
+                    attention_mask = attention_mask.repeat_interleave(self.sampling_params.n, dim=0)
+                    position_ids = position_ids.repeat_interleave(self.sampling_params.n, dim=0)
+                    batch_size = batch_size * self.sampling_params.n
+                seq = torch.cat([idx, response], dim=-1)
+
+            response_length = response.size(1)
+            delta_position_id = torch.arange(1, response_length + 1, device=position_ids.device)
+            delta_position_id = delta_position_id.unsqueeze(0).repeat(batch_size, 1)
+
+            # TODO(sgm): fix position_ids on right_pad
+            # prompt: left pad + response: right pad
+            # seq:            [0,0,0,0,x,x,x,x, | x,x,x,x,x,x,0,0,0,0,0]
+            # attention_mask: [0,0,0,0,1,1,1,1, | 1,1,0,0,1,1,0,0,0,0,0]
+            # position_ids:   [0,0,0,0,0,1,2,3, | 4,5,6,7,8,9,10,11]
+            response_position_ids = position_ids[:, -1:] + delta_position_id
+            position_ids = torch.cat([position_ids, response_position_ids], dim=-1)
+            response_attention_mask = get_eos_mask(response_id=response, eos_token=eos_token_id, dtype=attention_mask.dtype)
+            attention_mask = torch.cat((attention_mask, response_attention_mask), dim=-1)
+            breakpoint()
 
         # all the tp ranks should contain the same data here. data in all ranks are valid
         batch = TensorDict(

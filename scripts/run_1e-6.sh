@@ -2,8 +2,8 @@ set -x
 
 export VLLM_ATTENTION_BACKEND=XFORMERS
 
-gsm8k_train_path=$HOME/data/countdown_compressed_hinter/train.parquet
-gsm8k_test_path=$HOME/data/countdown_compressed_hinter/test.parquet
+gsm8k_train_path=$HOME/data/gsm8k/train.parquet
+gsm8k_test_path=$HOME/data/gsm8k/test.parquet
 
 train_files=$gsm8k_train_path
 test_files=$gsm8k_test_path
@@ -28,6 +28,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
     actor_rollout_ref.rollout.name=vllm \
+    actor_rollout_ref.rollout.n=2 \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
@@ -42,7 +43,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
     trainer.project_name='thinking_lingua_ppo' \
-    trainer.experiment_name=tinyzero_${state_dict}_${lr}_0312 \
+    trainer.experiment_name=test_4321_3 \
     +trainer.val_before_train=False \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
